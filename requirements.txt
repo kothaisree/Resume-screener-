@@ -1,4 +1,8 @@
 streamlit
 PyPDF2
-scikit-learn
 pandas
+scikit-learn
+langchain
+langchain-community
+faiss-cpu
+sentence-transformers
