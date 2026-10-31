@@ -13,7 +13,7 @@ st.divider()
 
 with st.sidebar:
     st.header("⚙️ Bulk Settings")
-    threshold = st.slider("Selection Threshold %", 0, 100, 60)
+    threshold = st.slider("Selection Threshold %", 0, 100, 15)
     st.success("✅ Supports up to 50 resumes at once!")
     st.info("Tip: 50 resumes ~ 30 sec processing")
 
