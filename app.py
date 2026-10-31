@@ -3,10 +3,6 @@ import PyPDF2
 import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_community.vectorstores import FAISS
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.schema import Document
 import re
 
 st.set_page_config(page_title="AI Resume Screener Pro V2 RAG", layout="wide", page_icon="🏆")
@@ -56,7 +52,6 @@ if st.button("🔍 SCREEN 100 RESUMES + RAG NOW", type="primary", use_container_
         progress = st.progress(0, text="Reading resumes...")
         jd_clean = clean_text(jd)
         resumes_data = []
-        raw_texts_for_rag = []
         
         for idx, file in enumerate(uploaded):
             progress.progress((idx+1)/len(uploaded), text=f"Reading {idx+1}/{len(uploaded)}: {file.name}")
@@ -64,7 +59,6 @@ if st.button("🔍 SCREEN 100 RESUMES + RAG NOW", type="primary", use_container_
             if not raw:
                 raw = file.name
             resumes_data.append({"name": file.name, "clean": clean_text(raw), "raw": raw})
-            raw_texts_for_rag.append(raw)
 
         progress.progress(0.9, text="AI Ranking all resumes...")
         docs = [jd_clean] + [r["clean"] for r in resumes_data]
@@ -76,7 +70,7 @@ if st.button("🔍 SCREEN 100 RESUMES + RAG NOW", type="primary", use_container_
         for i, r in enumerate(resumes_data):
             score = round(float(scores[i]) * 100, 2)
             status = "✅ SELECTED" if score >= threshold else "❌ REJECTED"
-            results.append({"Resume": r["name"], "Score": score, "Status": status, "raw": r["raw"]})
+            results.append({"Resume": r["name"], "Score": score, "Status": status, "raw": r["raw"], "clean": r["clean"]})
 
         df = pd.DataFrame(results).sort_values(by="Score", ascending=False).reset_index(drop=True)
         df.insert(0, "Rank", range(1, len(df)+1))
@@ -92,32 +86,28 @@ if st.button("🔍 SCREEN 100 RESUMES + RAG NOW", type="primary", use_container_
         st.subheader(f"🏆 Leaderboard - Top {len(df)} Resumes Ranked")
         st.dataframe(df[["Rank", "Resume", "Score", "Status"]], use_container_width=True, hide_index=True, height=600)
 
-        # RAG SECTION
+        # ===== RAG CHAT WITHOUT LANGCHAIN =====
         st.divider()
         st.subheader("💬 RAG Chat - Chat with 100 Resumes!")
-        
-        @st.cache_resource
-        def build_rag(_texts, _names):
-            embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
-            documents = [Document(page_content=t, metadata={"name": n}) for t, n in zip(_texts, _names)]
-            splitter = RecursiveCharacterTextSplitter(chunk_size=600, chunk_overlap=100)
-            chunks = splitter.split_documents(documents)
-            return FAISS.from_documents(chunks, embeddings)
-
-        with st.spinner("Building RAG Vector DB..."):
-            names = [r["Resume"] for r in results]
-            vectorstore = build_rag(raw_texts_for_rag, names)
-        
         st.success("RAG Ready! Kelvi kelu da!")
-        query = st.text_input("Ex: Why Rank 1 is best? Who has Python?")
+        
+        query = st.text_input("Ex: Why Rank 1 is best? Who has Python? Compare top 2")
         if query:
-            retrieved = vectorstore.similarity_search(query, k=5)
-            st.write(f"**Answer for:** {query}")
-            for doc in retrieved:
-                st.markdown(f"- **{doc.metadata['name']}**: {doc.page_content[:350]}...")
-            st.caption("Source: FAISS + HuggingFace Embeddings | Proof from resume")
+            q_clean = clean_text(query)
+            rag_docs = [r["clean"] for r in results] + [q_clean]
+            rag_vectorizer = TfidfVectorizer(stop_words='english')
+            rag_tfidf = rag_vectorizer.fit_transform(rag_docs)
+            rag_scores = cosine_similarity(rag_tfidf[-1:], rag_tfidf[:-1]).flatten()
+            
+            # Top 3 relevant
+            top_idx = rag_scores.argsort()[::-1][:3]
+            st.write(f"**RAG Answer for:** {query}")
+            for idx in top_idx:
+                if rag_scores[idx] > 0.05:
+                    st.markdown(f"- **{results[idx]['Resume']} ({results[idx]['Score']}%) - Relevance {round(rag_scores[idx]*100,1)}%**: {results[idx]['raw'][:350]}...")
+            st.caption("Source: TF-IDF Vector DB | Proof retrieved from resume text - No Langchain needed!")
 
         csv = df[["Rank", "Resume", "Score", "Status"]].to_csv(index=False).encode('utf-8')
         st.download_button("📥 Download Full 100 Results CSV", csv, "100_resumes_rag_leaderboard.csv", "text/csv", type="primary")
 
-st.caption("V2 BULK EDITION | 2-100 resumes | RAG Chat | Company Ready")
+st.caption("V2 BULK EDITION | 2-100 resumes | RAG Chat | Error-Free | No Langchain")
