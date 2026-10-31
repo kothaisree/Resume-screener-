@@ -1,93 +1,104 @@
 import streamlit as st
 import PyPDF2
+import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-import pandas as pd
+import re
 
-# --- PAGE CONFIG ---
-st.set_page_config(page_title="AI Resume Screener Pro", page_icon="🚀", layout="wide")
+st.set_page_config(page_title="AI Resume Screener Pro", layout="wide", page_icon="🏆")
 
-# --- CUSTOM CSS FOR PRO LOOK ---
-st.markdown("""
-<style>
-    .main { background-color: #0e1117; }
-    .stApp { background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); }
-    .metric-card { background: #1e293b; padding: 20px; border-radius: 15px; border: 1px solid #334155; }
-</style>
-""", unsafe_allow_html=True)
-
-# --- HEADER ---
-st.markdown("<h1 style='text-align: center; color: #38bdf8;'>🚀 AI Resume Screener <span style='color:white;'>PRO</span></h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; color: #94a3b8;'>AI-Powered ATS | Rank 50 Resumes in 10 Seconds | Built with Python & ML</p>", unsafe_allow_html=True)
+st.title("🏆 AI Resume Screener Pro - BULK 50 Supported!")
+st.markdown("### Upload 2 to 50 Resumes at once - AI ranks all!")
 st.divider()
 
-# --- INPUTS ---
-col1, col2 = st.columns([1, 1.5])
-with col1:
-    st.subheader("📋 Job Description")
-    jd = st.text_area("Paste JD here", height=300, placeholder="Ex: Looking for Python Developer with ML, SQL experience...")
+with st.sidebar:
+    st.header("⚙️ Bulk Settings")
     threshold = st.slider("Selection Threshold %", 0, 100, 60)
+    st.success("✅ Supports up to 50 resumes at once!")
+    st.info("Tip: 50 resumes ~ 30 sec processing")
 
-with col2:
-    st.subheader("📄 Upload Resumes (PDF)")
-    files = st.file_uploader("Drag & Drop", type="pdf", accept_multiple_files=True)
+st.subheader("📋 Job Description")
+jd = st.text_area("Paste JD", height=180)
 
-# --- LOGIC ---
+st.subheader("📄 Upload Resumes (2 to 50)")
+uploaded = st.file_uploader(f"Select up to 50 PDFs", accept_multiple_files=True, type=['pdf'])
+
 def extract_text(pdf):
-    reader = PyPDF2.PdfReader(pdf)
     text = ""
-    for page in reader.pages:
-        text += page.extract_text() or ""
+    try:
+        reader = PyPDF2.PdfReader(pdf)
+        for page in reader.pages[:5]:  # First 5 pages only for speed - 50 resume fast
+            t = page.extract_text()
+            if t:
+                text += t + " "
+    except:
+        text = ""
     return text
 
-if st.button("🔍 SCREEN RESUMES NOW", use_container_width=True, type="primary"):
-    if not jd or not files:
-        st.warning("Please add JD and upload resumes!")
-    else:
-        with st.spinner("AI is screening..."):
-            resumes_text = [extract_text(f) for f in files]
-            names = [f.name for f in files]
-            
-            docs = [jd] + resumes_text
-            vectorizer = TfidfVectorizer(stop_words='english')
-            vectors = vectorizer.fit_transform(docs)
-            
-            jd_vec = vectors[0]
-            res_vecs = vectors[1:]
-            
-            scores = cosine_similarity(jd_vec, res_vecs)[0] * 100
-            
-            data = []
-            for i, score in enumerate(scores):
-                status = "✅ SELECTED" if score >= threshold else "❌ REJECTED"
-                badge = "🏆 TOP CANDIDATE" if score == max(scores) else ""
-                data.append({"Rank": 0, "Resume": names[i], "Match %": round(score, 2), "Status": status, "Badge": badge})
-            
-            df = pd.DataFrame(data)
-            df = df.sort_values(by="Match %", ascending=False)
-            df['Rank'] = range(1, len(df)+1)
-            
-            # --- RESULTS ---
-            st.divider()
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Total Resumes", len(files))
-            c2.metric("Selected", len(df[df['Match %']>=threshold]))
-            c3.metric("Top Score", f"{max(scores):.2f}%")
-            
-            st.subheader("🏆 Leaderboard")
-            
-            # Color function
-            def color_score(val):
-                if val >= 75: color = "#22c55e"
-                elif val >= 60: color = "#eab308"
-                else: color = "#ef4444"
-                return f'background-color: {color}; color: white; font-weight: bold;'
-            
-            styled_df = df.style.map(color_score, subset=['Score'])
-            st.dataframe(styled_df, use_container_width=True, hide_index=True)
-            
-            # Download
-            csv = df.to_csv(index=False).encode('utf-8')
-            st.download_button("📥 Download Result as Excel/CSV", csv, "screening_result.csv", "text/csv", use_container_width=True)
+def clean_text(t):
+    t = t.lower()
+    t = re.sub(r'[^a-z0-9 ]', ' ', t)
+    t = re.sub(r'\s+', ' ', t)
+    return t.strip()
 
-st.markdown("<p style='text-align:center; color: #475569; margin-top: 50px;'>Built by Kothai | Python + TF-IDF + Cosine Similarity</p>", unsafe_allow_html=True)
+if st.button("🔍 SCREEN 50 RESUMES NOW", type="primary", use_container_width=True):
+    if not jd:
+        st.error("JD paste pannu da!")
+    elif not uploaded:
+        st.error("Resume upload pannu da!")
+    elif len(uploaded) > 50:
+        st.error("⚠️ Max 50 resumes only da! 50-ku mela upload panna koodathu")
+    else:
+        progress = st.progress(0, text="Reading resumes...")
+        jd_clean = clean_text(jd)
+        resumes_data = []
+        
+        for idx, file in enumerate(uploaded):
+            progress.progress((idx+1)/len(uploaded), text=f"Reading {idx+1}/{len(uploaded)}: {file.name}")
+            raw = extract_text(file)
+            if not raw:
+                raw = file.name
+            resumes_data.append({"name": file.name, "clean": clean_text(raw)})
+
+        progress.progress(0.9, text="AI Ranking all resumes...")
+        docs = [jd_clean] + [r["clean"] for r in resumes_data]
+        vectorizer = TfidfVectorizer(stop_words='english', max_features=5000) # Fast for 50
+        tfidf = vectorizer.fit_transform(docs)
+        scores = cosine_similarity(tfidf[0:1], tfidf[1:]).flatten()
+
+        results = []
+        for i, r in enumerate(resumes_data):
+            score = round(float(scores[i]) * 100, 2)
+            status = "✅ SELECTED" if score >= threshold else "❌ REJECTED"
+            results.append({"Resume": r["name"], "Score": score, "Status": status})
+
+        df = pd.DataFrame(results).sort_values(by="Score", ascending=False).reset_index(drop=True)
+        df.insert(0, "Rank", range(1, len(df)+1))
+        progress.empty()
+
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Total", len(df))
+        c2.metric("Selected", len(df[df['Score']>=threshold]))
+        c3.metric("Rejected", len(df[df['Score']<threshold]))
+        c4.metric("Top Score", f"{df['Score'].max()}%")
+
+        st.divider()
+        st.subheader(f"🏆 Leaderboard - Top {len(df)} Resumes Ranked")
+        st.dataframe(df, use_container_width=True, hide_index=True, height=600)
+
+        st.divider()
+        st.subheader("🎖️ Top 3 Winners")
+        for idx, row in df.head(10).iterrows():
+            if idx == 0:
+                st.success(f"🥇 RANK 1 - {row['Resume']} - {row['Score']}%")
+            elif idx == 1:
+                st.warning(f"🥈 RANK 2 - {row['Resume']} - {row['Score']}%")
+            elif idx == 2:
+                st.info(f"🥉 RANK 3 - {row['Resume']} - {row['Score']}%")
+            else:
+                st.write(f"**{row['Rank']}.** {row['Resume']} - {row['Score']}% {row['Status']}")
+
+        csv = df.to_csv(index=False).encode('utf-8')
+        st.download_button("📥 Download Full 50 Results CSV", csv, "50_resumes_leaderboard.csv", "text/csv", type="primary")
+
+st.caption("BULK EDITION | 2-50 resumes | Progress bar | Fast processing")
