@@ -83,7 +83,7 @@ if st.button("🔍 SCREEN RESUMES NOW", use_container_width=True, type="primary"
                 else: color = "#ef4444"
                 return f'background-color: {color}; color: white; font-weight: bold;'
             
-            styled_df = df.style.applymap(color_score, subset=['Match %'])
+            styled_df = df.style.map(color_score, subset=['Score'])
             st.dataframe(styled_df, use_container_width=True, hide_index=True)
             
             # Download
